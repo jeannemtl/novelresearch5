@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+LIVE DEMO: https://framereactapp2-self.vercel.app/
 # novelresearch
 =======
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/pages/api-reference/create-next-app).
