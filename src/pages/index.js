@@ -3,6 +3,10 @@ import { ethers } from 'ethers';
 
 const RetroResearchTerminal = () => {
   // Initial state declarations
+  const isSameIdea = (a, b) => 
+    a.Title === b.Title && 
+    a.Experiment === b.Experiment && 
+    a.Novelty === b.Novelty;
   const [currentTab, setCurrentTab] = useState('paper');
   const [text, setText] = useState('');
   const [pdfText, setPdfText] = useState('');
@@ -23,8 +27,13 @@ const RetroResearchTerminal = () => {
   const [fetchTimer, setFetchTimer] = useState(0);
   const [timerActive, setTimerActive] = useState(false);
   const [randomValues, setRandomValues] = useState(['', '', '', '']);
+  const [registeredTerms, setRegisteredTerms] = useState(null);
+  // Add at the top with other state declarations
+  const [termsRegistry, setTermsRegistry] = useState({});  // Track terms by idea ID
   
-  const NFT_CONTRACT_ADDRESS = "0x0D8682373DCD5605911019C96565d97Af1569Dc8";
+  //const NFT_CONTRACT_ADDRESS = "0x0D8682373DCD5605911019C96565d97Af1569Dc8";
+  const NFT_CONTRACT_ADDRESS = "0x6344283854eef2A5137a54A5024dA6a7DBE1E1B3";
+  const LICENSE_TERMS_ADDRESS = "0xE7bdb44A43CFb86cBb4d0f4ef0589bE95654A1F6";
   // Define tabs configuration
   const tabs = [
     { id: 'paper', label: 'Paper Text' },
@@ -124,8 +133,7 @@ const RetroResearchTerminal = () => {
     )}
   </div>
 )}
-      
-      {idea.isMinted && !idea.isRegistered && (
+{idea.isMinted && !idea.isRegistered && (
   <>
     {idea.isRegistrationPending ? (
       <div className="inline-block bg-gray-400 text-white px-4 py-2 font-mono ml-2">
@@ -166,10 +174,46 @@ const RetroResearchTerminal = () => {
           {idea.registrationTx?.slice(0, 10)}...{idea.registrationTx?.slice(-8)}
         </a>
       </div>
+      {!termsRegistry[idea.tokenId] ? (
+        <button 
+          onClick={() => handleRegisterTerms(idea)}
+          className="bg-[#0000FF] text-white px-4 py-2 font-mono mt-4"
+        >
+          REGISTER TERMS →
+        </button>
+      ) : (
+        <div className="mt-4 border border-black p-4">
+          <div className="text-green-500 font-mono flex items-center gap-2">
+            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+            TERMS REGISTERED
+          </div>
+          <div className="mt-2 text-xs font-mono space-y-1">
+            <div>Terms ID: #{termsRegistry[idea.tokenId].id}</div>
+            <div className="flex items-center gap-2">
+              <span>Block:</span>
+              <span className="text-blue-600">#{termsRegistry[idea.tokenId].block}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span>Hash:</span>
+              <a 
+                href={`https://sepolia.basescan.org/tx/${termsRegistry[idea.tokenId].tx}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline truncate max-w-[200px]"
+              >
+                {termsRegistry[idea.tokenId].tx?.slice(0, 10)}...
+                {termsRegistry[idea.tokenId].tx?.slice(-8)}
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   </div>
 )}
-            </div>
+      </div>
           </div>
         ))}
       </div>
@@ -579,6 +623,8 @@ const handleIPRegistration = async (idea) => {
     const provider = new ethers.providers.Web3Provider(window.ethereum);
     const signer = provider.getSigner();
 
+    // Register IP directly without terms for now
+    setProgressMessages(prev => [...prev, "Registering IP..."]);
     const registrationWorkflows = new ethers.Contract(
       "0xde13Be395E1cd753471447Cf6A656979ef87881c",
       [
@@ -615,7 +661,7 @@ const handleIPRegistration = async (idea) => {
     const receipt = await tx.wait();
     console.log("Registration confirmed:", receipt);
     
-    // Update state to show registered with transaction details
+    // Update state with registration details
     setResearchIdeas(prevIdeas => prevIdeas.map(item => ({
       ...item,
       scoredText: item.scoredText.map(st => ({
@@ -632,7 +678,7 @@ const handleIPRegistration = async (idea) => {
       }))
     })));
 
-    setProgressMessages(prev => [...prev, "Registered as IP Asset!"]);
+    setProgressMessages(prev => [...prev, "Successfully registered as IP Asset!"]);
     
   } catch (error) {
     console.error('IP registration error:', error);
@@ -649,6 +695,74 @@ const handleIPRegistration = async (idea) => {
     })));
     
     setIdeasError(`Failed to register IP: ${error.message}`);
+  }
+};
+
+// Add this new function after your other contract interactions
+
+
+const handleRegisterTerms = async (idea) => {
+  try {
+    if (!window.ethereum) {
+      alert('Please install MetaMask');
+      return;
+    }
+
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const signer = provider.getSigner();
+
+    const licenseTermsContract = new ethers.Contract(
+      LICENSE_TERMS_ADDRESS,
+      [
+        'function registerTerms() external returns (uint256)',
+        'function getTermsId() external view returns (uint256)',
+        'function totalRegisteredLicenseTerms() external view returns (uint256)'
+      ],
+      signer
+    );
+
+    console.log("Registering license terms...");
+    const tx = await licenseTermsContract.registerTerms();
+    
+    console.log("Waiting for confirmation...");
+    const receipt = await tx.wait();
+    console.log("Terms registration transaction:", receipt);
+
+    // Try to get total terms first to confirm the registration
+    try {
+      const total = await licenseTermsContract.totalRegisteredLicenseTerms();
+      const termsId = total.toString();
+
+      setTermsRegistry(prev => ({
+        ...prev,
+        [idea.tokenId]: {
+          id: termsId,
+          tx: receipt.transactionHash,
+          block: receipt.blockNumber
+        }
+      }));
+
+      setProgressMessages(prev => [...prev, `License terms registered with ID: ${termsId}`]);
+      return termsId;
+    } catch (error) {
+      // If we can't get the ID, still show success but with transaction details only
+      setTermsRegistry(prev => ({
+        ...prev,
+        [idea.tokenId]: {
+          id: 'Latest',
+          tx: receipt.transactionHash,
+          block: receipt.blockNumber
+        }
+      }));
+      setProgressMessages(prev => [...prev, `License terms registered successfully`]);
+      return null;
+    }
+
+  } catch (error) {
+    console.error('License terms registration error:', error);
+    setProgressMessages(prev => [...prev, `Failed to register license terms: ${error.message}`]);
+    throw error;
   }
 };
   return (
@@ -745,6 +859,7 @@ const handleIPRegistration = async (idea) => {
           </div>
         ))}
       </div>
+      
     </div>
   </div>
 </div>
